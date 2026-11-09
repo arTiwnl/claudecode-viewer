@@ -1,5 +1,5 @@
 {
-  "name": "claude-viewer",
+  "name": "claudecode-viewer",
   "version": "1.0.0",
   "description": "Todos os seus Claude Code numa tela só, com Kanban de status em tempo real",
   "main": "index.js",

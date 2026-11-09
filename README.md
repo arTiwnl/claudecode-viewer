@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧭 Claude Viewer
+# 🧭 Claude Code Viewer
 
 **Todos os seus Claude Code numa tela só. Com um Kanban que te avisa quando algum precisa de você.**
 
@@ -17,7 +17,7 @@
 
 Você abre 5, 8, 12 sessões do Claude Code em abas de terminal diferentes. Uma está pedindo permissão, outra terminou há dez minutos, outra ainda está trabalhando… e você só descobre alternando aba por aba.
 
-**Claude Viewer** resolve isso: um painel local que junta todas as sessões e mostra, em tempo real, o que cada uma está fazendo.
+**Claude Code Viewer** resolve isso: um painel local que junta todas as sessões e mostra, em tempo real, o que cada uma está fazendo.
 
 ```
 ┌─ Kanban ───────────────────────────────────────────────────────────────┐
@@ -52,8 +52,8 @@ Você abre 5, 8, 12 sessões do Claude Code em abas de terminal diferentes. Uma 
 Requisitos: **Node 18+** e o [Claude Code](https://claude.com/claude-code) instalado e logado (`claude` no seu `PATH`).
 
 ```bash
-git clone https://github.com/<seu-usuario>/claude-viewer.git
-cd claude-viewer
+git clone https://github.com/arTiwnl/claudecode-viewer.git
+cd claudecode-viewer
 npm install
 npm start
 ```

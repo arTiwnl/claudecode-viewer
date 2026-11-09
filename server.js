@@ -33,7 +33,7 @@ app.use('/vendor/fit', express.static(path.join(__dirname, 'node_modules/@xterm/
 const hookCmd = (state) =>
   `curl -s -m 2 -X POST "http://127.0.0.1:${PORT}/hook/$CLAUDE_VIEWER_ID/${state}" >/dev/null 2>&1 || true`;
 const hook = (state) => [{ hooks: [{ type: 'command', command: hookCmd(state) }] }];
-const hooksFile = path.join(os.tmpdir(), `claude-viewer-hooks-${PORT}.json`);
+const hooksFile = path.join(os.tmpdir(), `claudecode-viewer-hooks-${PORT}.json`);
 fs.writeFileSync(
   hooksFile,
   JSON.stringify({
@@ -249,4 +249,4 @@ pollExternal();
 
 process.on('exit', () => sessions.forEach((s) => { try { s.term.kill(); } catch {} }));
 process.on('SIGINT', () => process.exit(0));
-server.listen(PORT, '127.0.0.1', () => console.log(`Claude Viewer em http://localhost:${PORT}`));
+server.listen(PORT, '127.0.0.1', () => console.log(`Claude Code Viewer em http://localhost:${PORT}`));

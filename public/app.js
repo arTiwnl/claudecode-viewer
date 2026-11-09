@@ -219,7 +219,7 @@ function render() {
     };
     kanbanEl.appendChild(col);
   }
-  document.title = (n ? `(${n}) ` : '') + 'Claude Viewer';
+  document.title = (n ? `(${n}) ` : '') + 'Claude Code Viewer';
 }
 
 // ---------- abas ----------
