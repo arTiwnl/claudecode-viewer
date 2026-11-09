@@ -47,6 +47,15 @@ main{flex:1;min-height:0;position:relative}
 .card small{color:var(--dim);display:block;word-break:break-all}
 .chips{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
 .chip{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--dim)}
+.detail{margin-top:6px;padding:6px 8px;border-radius:6px;background:#0006;font:11px ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:4.8em;overflow:hidden;color:var(--text)}
+.detail.permission,.detail.other,.detail.idle{border-left:3px solid var(--attention)}
+.detail.done{color:var(--dim);font-family:inherit;font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.actions-row{display:flex;gap:6px;margin-top:8px}
+.actions-row button{flex:1;padding:4px}
+.actions-row .ok{background:var(--done);border-color:var(--done);color:#000}
+.actions-row .no{border-color:#ff6b6b;color:#ff6b6b}
+.age{margin-top:8px;font-size:11px;color:var(--dim)}
+.card.attention .age{color:var(--attention)}
 .empty{color:var(--dim);text-align:center;padding:30px}
 dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:20px;width:480px}
 dialog::backdrop{background:#0009}
@@ -64,6 +73,8 @@ input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1
   <button class="tab active" data-tab="terms">Terminais</button>
   <button class="tab" data-tab="kanban">Kanban <span id="attn" class="badge" hidden>0</span></button>
   <span class="spacer"></span>
+  <span id="conn" class="chip" hidden>servidor desconectado, reconectando…</span>
+  <button id="hooks" title="">Ligar status exato</button>
   <button class="primary" id="new">+ Nova sessão</button>
 </header>
 <main>

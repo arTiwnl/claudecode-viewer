@@ -3,6 +3,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { describeTool } = require('./lib/describe');
 
 const run = (cmd, args) =>
   new Promise((res) => execFile(cmd, args, { maxBuffer: 8 * 1024 * 1024 }, (_, out) => res(out || '')));
@@ -42,11 +43,14 @@ function flag(command, name) {
   return m ? m[1] : '';
 }
 
-// Lê o final do transcript e decide o estado
-function inferState(file) {
+/**
+ * Decide o estado a partir do final do transcript.
+ * `now` é injetável para teste. Retorna { state, age, model, mtimeMs, detail }.
+ */
+function inferState(file, now = Date.now()) {
   let st;
   try { st = fs.statSync(file); } catch { return { state: 'standby' }; }
-  const age = (Date.now() - st.mtimeMs) / 1000;
+  const age = (now - st.mtimeMs) / 1000;
   const size = st.size, len = Math.min(size, 200000);
   const fd = fs.openSync(file, 'r');
   const buf = Buffer.alloc(len);
@@ -59,20 +63,24 @@ function inferState(file) {
     let j; try { j = JSON.parse(line); } catch { continue; }
     if ((j.type === 'user' || j.type === 'assistant') && j.message && !j.isSidechain) { last = j; break; }
   }
-  if (!last) return { state: 'standby', age };
+  const base = { age, mtimeMs: st.mtimeMs };
+  if (!last) return { ...base, state: 'standby' };
 
   const content = Array.isArray(last.message.content) ? last.message.content : [{ type: 'text', text: String(last.message.content || '') }];
   const model = last.message.model;
   if (last.type === 'assistant') {
-    const hasToolUse = content.some((c) => c.type === 'tool_use');
-    if (hasToolUse) {
+    const tool = content.filter((c) => c.type === 'tool_use').pop();
+    if (tool) {
       // ferramenta pedida e sem resultado: se parou há alguns segundos, está esperando aprovação
-      return { state: age < 6 ? 'processing' : 'attention', age, model };
+      if (age < 6) return { ...base, state: 'processing', model };
+      return { ...base, state: 'attention', model, detail: { kind: 'permission', message: '', tool: describeTool(tool.name, tool.input) } };
     }
-    return { state: age < 4 ? 'processing' : 'done', age, model };
+    if (age < 4) return { ...base, state: 'processing', model };
+    const text = content.filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
+    return { ...base, state: 'done', model, detail: text ? { kind: 'done', message: text.slice(0, 300) } : null };
   }
   // último é do usuário (prompt ou tool_result): o modelo está trabalhando
-  return { state: age < 180 ? 'processing' : 'standby', age, model };
+  return { ...base, state: age < 180 ? 'processing' : 'standby', model };
 }
 
 function latestTranscripts(cwd, n) {
@@ -84,7 +92,11 @@ function latestTranscripts(cwd, n) {
   } catch { return []; }
 }
 
-async function detectExternal(excludePids = new Set()) {
+/**
+ * hookByPid: Map<pid, { transcript }> vindo dos hooks globais. Quando existe, o casamento
+ * processo -> transcript é exato; sem ele, cai na heurística por ordem dentro da pasta.
+ */
+async function detectExternal(excludePids = new Set(), hookByPid = new Map()) {
   const procs = (await listProcesses()).filter((p) => !excludePids.has(p.pid) && !excludePids.has(p.ppid));
   const cwds = await cwdOf(procs.map((p) => p.pid));
   const byCwd = {};
@@ -92,23 +104,35 @@ async function detectExternal(excludePids = new Set()) {
 
   const result = [];
   for (const [cwd, group] of Object.entries(byCwd)) {
-    // vários claude no mesmo diretório: casa os mais antigos (maior etime) com os transcripts mais antigos dos N mais recentes
-    const files = latestTranscripts(cwd, group.length).reverse();
     group.sort((a, b) => a.pid - b.pid);
-    group.forEach((p, i) => {
-      const info = files[i] ? inferState(files[i]) : { state: 'standby' };
+    const assigned = new Map();
+    for (const p of group) {
+      const t = hookByPid.get(p.pid)?.transcript;
+      if (t && fs.existsSync(t)) assigned.set(p.pid, t);
+    }
+    const used = new Set(assigned.values());
+    const pending = group.filter((p) => !assigned.has(p.pid));
+    // heurística para os sem hook: mais antigos com os transcripts mais antigos entre os N mais recentes
+    const pool = latestTranscripts(cwd, group.length + used.size).filter((f) => !used.has(f)).slice(0, pending.length).reverse();
+    pending.forEach((p, i) => pool[i] && assigned.set(p.pid, pool[i]));
+
+    for (const p of group) {
+      const file = assigned.get(p.pid) || null;
+      const info = file ? inferState(file) : { state: 'standby' };
       result.push({
         pid: p.pid, tty: p.tty, cwd, command: p.command, etime: p.etime,
         model: flag(p.command, '--model') || info.model || '',
         effort: flag(p.command, '--effort'),
         permissionMode: flag(p.command, '--permission-mode'),
-        state: info.state, file: files[i] || null, sessionId: files[i] ? path.basename(files[i], '.jsonl') : null,
+        state: info.state, detail: info.detail || null, mtimeMs: info.mtimeMs || 0,
+        file, sessionId: file ? path.basename(file, '.jsonl') : null,
+        exact: hookByPid.has(p.pid) && assigned.get(p.pid) === hookByPid.get(p.pid).transcript,
       });
-    });
+    }
   }
   return result;
 }
 
-module.exports = { detectExternal };
+module.exports = { detectExternal, inferState, encodeCwd };
 
-if (require.main === module) detectExternal().then((r) => console.table(r.map(({ command, ...x }) => x)));
+if (require.main === module) detectExternal().then((r) => console.table(r.map(({ command, detail, ...x }) => x)));

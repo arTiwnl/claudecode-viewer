@@ -2,21 +2,13 @@
   "name": "claudecode-viewer",
   "version": "1.0.0",
   "description": "Todos os seus Claude Code numa tela só, com Kanban de status em tempo real",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/",
     "start": "node server.js",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true"
+    "postinstall": "node scripts/postinstall.js"
   },
-  "keywords": [
-    "claude-code",
-    "claude",
-    "kanban",
-    "terminal",
-    "xterm",
-    "developer-tools"
-  ],
-  "author": "",
+  "author": "Arthur Carvalho",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
@@ -28,5 +20,35 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "bin": {
+    "claudecode-viewer": "bin/claudecode-viewer.js"
+  },
+  "files": [
+    "server.js",
+    "detect.js",
+    "lib",
+    "public",
+    "bin",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arTiwnl/claudecode-viewer.git"
+  },
+  "homepage": "https://github.com/arTiwnl/claudecode-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/arTiwnl/claudecode-viewer/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "kanban",
+    "terminal",
+    "xterm",
+    "developer-tools",
+    "cli"
+  ]
 }
