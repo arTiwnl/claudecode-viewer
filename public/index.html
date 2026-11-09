@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude Viewer</title>
+<link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+<style>
+:root{--bg:#14151a;--panel:#1c1e25;--line:#2c2f3a;--text:#e6e7eb;--dim:#8b8f9c;--accent:#d97757;
+--standby:#8b8f9c;--processing:#4f9dff;--attention:#ffb347;--done:#4ac27a}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:14px -apple-system,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0 12px 0 0}
+.tab,button{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}
+.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.spacer{flex:1}
+.badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:6px;border-radius:9px;background:var(--attention);color:#000;font-size:11px;font-weight:600;text-align:center}
+main{flex:1;min-height:0;position:relative}
+#terms{position:absolute;inset:0;display:grid;gap:6px;padding:6px;grid-auto-rows:1fr}
+#terms.hidden,#kanban.hidden{display:none}
+.cell{display:flex;flex-direction:column;min-height:0;min-width:0;background:#000;border:2px solid var(--line);border-radius:8px;overflow:hidden}
+.cell.attention{border-color:var(--attention)}
+.cell.processing{border-color:var(--processing)}
+.cell.done{border-color:var(--done)}
+.cell.max{grid-column:1/-1!important;grid-row:1/-1!important;z-index:2}
+.cell.is-main{box-shadow:0 0 0 1px var(--accent)}
+.cell-head{display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--panel);font-size:12px}
+.cell-head .meta{color:var(--dim)}
+.cell-head button{padding:1px 7px;font-size:12px}
+.term{flex:1;min-height:0;padding:4px}
+.log{flex:1;min-height:0;overflow:auto;margin:0;padding:8px;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,Menlo,monospace;background:#000;color:#d4d4d4}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--standby);flex:none}
+.dot.processing{background:var(--processing);animation:pulse 1s infinite}
+.dot.attention{background:var(--attention)}.dot.done{background:var(--done)}
+@keyframes pulse{50%{opacity:.3}}
+#kanban{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:10px}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0}
+.col h2{font-size:13px;margin:0;padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.col .list{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:8px}
+.col.over{outline:2px dashed var(--accent)}
+.card{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--standby);border-radius:8px;padding:10px;cursor:grab}
+.card.processing{border-left-color:var(--processing)}.card.attention{border-left-color:var(--attention)}.card.done{border-left-color:var(--done)}
+.card b{display:block;margin-bottom:4px}
+.card small{color:var(--dim);display:block;word-break:break-all}
+.chips{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
+.chip{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--dim)}
+.empty{color:var(--dim);text-align:center;padding:30px}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:20px;width:480px}
+dialog::backdrop{background:#0009}
+label{display:block;margin:10px 0 4px;color:var(--dim);font-size:12px}
+input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px;font:inherit}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.check{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--text)}.check input{width:auto}
+#err{color:#ff6b6b;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Claude Viewer</h1>
+  <button class="tab active" data-tab="terms">Terminais</button>
+  <button class="tab" data-tab="kanban">Kanban <span id="attn" class="badge" hidden>0</span></button>
+  <span class="spacer"></span>
+  <button class="primary" id="new">+ Nova sessão</button>
+</header>
+<main>
+  <div id="terms"></div>
+  <div id="kanban" class="hidden"></div>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h3 style="margin:0 0 4px">Nova sessão do Claude Code</h3>
+    <label>Nome</label><input name="name" placeholder="ex: api-backend">
+    <label>Diretório do projeto</label><input name="cwd" placeholder="~/Desktop/Projetos/meu-projeto" required>
+    <div class="row">
+      <div><label>Modelo</label>
+        <select name="model">
+          <option value="">Padrão</option>
+          <option value="fable">Fable</option>
+          <option value="opus">Opus</option>
+          <option value="sonnet">Sonnet</option>
+          <option value="haiku">Haiku</option>
+        </select></div>
+      <div><label>Effort</label>
+        <select name="effort">
+          <option value="">Padrão</option>
+          <option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option>
+        </select></div>
+    </div>
+    <label>Modo de permissão</label>
+    <select name="permissionMode">
+      <option value="">Padrão</option>
+      <option value="plan">plan</option>
+      <option value="acceptEdits">acceptEdits</option>
+      <option value="auto">auto</option>
+      <option value="dontAsk">dontAsk</option>
+      <option value="bypassPermissions">bypassPermissions (perigoso)</option>
+    </select>
+    <label>Modelo customizado (ID completo, sobrescreve o seletor)</label>
+    <input name="modelCustom" placeholder="ex: claude-sonnet-5-5">
+    <label>Diretórios extras (separados por vírgula)</label><input name="addDirs">
+    <label>System prompt adicional</label><textarea name="appendSystemPrompt" rows="2"></textarea>
+    <label>Argumentos extras da CLI</label><input name="extraArgs" placeholder="--verbose">
+    <label class="check"><input type="checkbox" name="continue"> Continuar última conversa neste diretório (--continue)</label>
+    <div id="err"></div>
+    <div class="actions"><button type="button" id="cancel">Cancelar</button><button class="primary" value="ok">Iniciar</button></div>
+  </form>
+</dialog>
+
+<script src="/vendor/xterm/lib/xterm.js"></script>
+<script src="/vendor/fit/lib/addon-fit.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

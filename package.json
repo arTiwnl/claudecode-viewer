@@ -1,0 +1,32 @@
+{
+  "name": "claude-viewer",
+  "version": "1.0.0",
+  "description": "Todos os seus Claude Code numa tela só, com Kanban de status em tempo real",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "kanban",
+    "terminal",
+    "xterm",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "express": "^5.3.0",
+    "node-pty": "^1.1.0",
+    "ws": "^8.22.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
