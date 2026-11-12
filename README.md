@@ -74,6 +74,9 @@ Abra **http://localhost:7777** e clique em **+ Nova sessão**.
 | ------------------------ | -------- | ------------------------------------------------- |
 | `--port` / `PORT`        | `7777`   | Porta do servidor                                 |
 | `--no-open`              |          | Não abrir o navegador automaticamente             |
+| `--remote` / `REMOTE=1`  |          | Aceita acesso de outros computadores (exige token) |
+| `--host` / `HOST`        | `127.0.0.1` | Endereço em que escutar                        |
+| `CLAUDE_VIEWER_TOKEN`    | gerado   | Token do modo remoto (padrão: `~/.claudecode-viewer/token`) |
 | `CLAUDE_BIN`             | `claude` | Caminho do executável do Claude Code              |
 | `NOTIFY=0`               |          | Desliga as notificações do sistema                |
 
@@ -111,13 +114,39 @@ Nada é escrito na sua configuração global, a não ser que você ligue o **sta
 - Aprovar/negar só funciona em sessões abertas pelo app, e assume o prompt padrão do Claude Code (`Enter` = sim, `Esc` = não).
 - Testado no **macOS**. Linux deve funcionar; Windows não foi testado.
 
+## 🌐 Acessar de outro computador
+
+Por padrão o app só aceita conexões do próprio computador. Para ver o Kanban e os terminais de outra máquina sua:
+
+**Opção A: túnel SSH (mais simples, nada muda no app)**
+
+```bash
+ssh -L 7777:127.0.0.1:7777 seu-usuario@ip-do-computador-do-viewer
+# depois abra http://localhost:7777 na outra máquina
+```
+
+**Opção B: modo remoto com token (use com Tailscale ou VPN)**
+
+```bash
+npx claudecode-viewer --remote
+```
+
+O terminal mostra um link do tipo `http://<ip>:7777/?token=...`. Abra-o uma vez no outro computador: o token vira um cookie e a URL é limpa. Sem o token, qualquer acesso de fora recebe `401`.
+
+- O acesso **local** continua sem senha.
+- O token fica em `~/.claudecode-viewer/token` (permissão `600`). Para trocá-lo, apague o arquivo e reinicie.
+- **Prefira Tailscale** (rede privada e criptografada). Em rede local por HTTP puro, o token e o conteúdo dos terminais trafegam sem criptografia: não use em Wi-Fi público.
+- Quem tem o token controla seus terminais. Trate como uma senha.
+- As notificações nativas continuam aparecendo no computador onde o viewer roda.
+
 ## 🔒 Segurança
 
 Esse app controla terminais, então:
 
-- O servidor escuta **somente em `127.0.0.1`**, nunca na rede.
-- Rejeita requisições e WebSockets cuja origem não seja o próprio `localhost:PORT`, o que bloqueia que sites abertos no navegador falem com ele (CSRF / DNS rebinding).
-- **Não exponha a porta** com túneis ou proxy reverso: não há autenticação.
+- Por padrão o servidor escuta **somente em `127.0.0.1`**, nunca na rede.
+- Pedidos só são aceitos vindos do próprio `localhost:PORT` (checagem de `Host` e `Origin`), o que bloqueia que sites abertos no navegador falem com ele (CSRF / DNS rebinding).
+- No **modo remoto**, tudo exige o token (comparação em tempo constante), inclusive WebSockets e hooks. O cookie é `HttpOnly` e `SameSite=Strict`, e `Origin` precisa ser o mesmo `Host`.
+- **Nunca exponha a porta** com túneis públicos ou proxy reverso sem o modo remoto: sem token, não há autenticação.
 - A opção `bypassPermissions` do formulário desliga as confirmações do Claude Code. Use com consciência.
 
 ## 🗂️ Estrutura

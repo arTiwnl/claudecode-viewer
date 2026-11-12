@@ -12,6 +12,9 @@ const { buildHooks, addHooks, removeHooks, hasHooks } = require('./lib/hooks-con
 const { nextState, mergeExternalState } = require('./lib/hook-logic');
 
 const PORT = process.env.PORT || 7777;
+// Modo remoto (opt-in): escuta fora do localhost e exige token. Sem isso, só 127.0.0.1.
+const HOST = process.env.HOST || (process.env.REMOTE === '1' ? '0.0.0.0' : '127.0.0.1');
+const REMOTE = process.env.REMOTE === '1' || !['127.0.0.1', 'localhost', '::1'].includes(HOST);
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 const NOTIFY = process.env.NOTIFY !== '0';
 const STATES = ['standby', 'processing', 'attention', 'done'];
@@ -23,16 +26,52 @@ const STORE = path.join(STORE_DIR, 'sessions.json');
 
 const app = express();
 
-// Segurança: o servidor controla terminais, então só aceita requisições vindas do próprio localhost.
-// Isso bloqueia que outros sites abertos no navegador falem com a API/WebSocket (CSRF, DNS rebinding).
+// Segurança: o servidor controla terminais, então nada é aceito sem prova de que o pedido é legítimo.
+//  - Acesso local: vem do próprio loopback com Host localhost (bloqueia CSRF e DNS rebinding de outros sites).
+//  - Acesso remoto (REMOTE=1): exige o token (cookie ou Bearer) e Origin igual ao Host.
 const allowedHosts = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
-const originOk = (req) => {
-  if (!allowedHosts.has(req.headers.host)) return false;
-  const o = req.headers.origin;
-  if (!o) return true; // curl dos hooks e navegação direta não enviam Origin
-  try { return allowedHosts.has(new URL(o).host); } catch { return false; }
+const isLoopbackAddr = (a) => a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+function loadToken() {
+  if (process.env.CLAUDE_VIEWER_TOKEN) return process.env.CLAUDE_VIEWER_TOKEN;
+  const f = path.join(STORE_DIR, 'token');
+  try { const t = fs.readFileSync(f, 'utf8').trim(); if (t.length >= 32) return t; } catch {}
+  const t = crypto.randomBytes(32).toString('hex');
+  fs.mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(f, t + '\n', { mode: 0o600 });
+  return t;
+}
+const TOKEN = REMOTE ? loadToken() : null;
+const safeEq = (a, b) => {
+  if (!a || !b) return false;
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
-app.use((req, res, next) => (originOk(req) ? next() : res.status(403).send('Forbidden')));
+const cookieToken = (req) => {
+  const m = (req.headers.cookie || '').match(/(?:^|;\s*)cv_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+};
+const sameHost = (origin, ok) => { try { return ok(new URL(origin).host); } catch { return false; } };
+function authState(req) {
+  const o = req.headers.origin;
+  if (isLoopbackAddr(req.socket.remoteAddress) && allowedHosts.has(req.headers.host)) {
+    return !o || sameHost(o, (h) => allowedHosts.has(h)) ? 'ok' : 'forbidden';
+  }
+  if (!REMOTE) return 'forbidden';
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!safeEq(cookieToken(req), TOKEN) && !safeEq(bearer, TOKEN)) return 'unauthorized';
+  return !o || sameHost(o, (h) => h === req.headers.host) ? 'ok' : 'forbidden';
+}
+app.use((req, res, next) => {
+  // login por link: http://host:7777/?token=...  -> grava o cookie e limpa a URL
+  if (REMOTE && req.method === 'GET' && req.query.token !== undefined && safeEq(req.query.token, TOKEN)) {
+    res.setHeader('Set-Cookie', `cv_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`);
+    return res.redirect(302, req.path);
+  }
+  const a = authState(req);
+  if (a === 'ok') return next();
+  if (a === 'unauthorized') return res.status(401).type('text/plain').send('Não autorizado. Abra o link com ?token=... que aparece no terminal onde o viewer foi iniciado.');
+  res.status(403).send('Forbidden');
+});
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 // Acha a pasta de um pacote instalado, esteja ele em ./node_modules ou içado (npx / instalação global)
@@ -350,7 +389,7 @@ termWss.on('connection', (ws, s) => {
 });
 
 server.on('upgrade', (req, socket, head) => {
-  if (!originOk(req)) return socket.destroy();
+  if (authState(req) !== 'ok') return socket.destroy();
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/ws/meta') return metaWss.handleUpgrade(req, socket, head, (ws) => metaWss.emit('connection', ws));
   const m = url.pathname.match(/^\/ws\/term\/(\w+)$/);
@@ -405,8 +444,14 @@ setInterval(pollExternal, 2000);
 process.on('exit', () => sessions.forEach((s) => { try { s.term.kill(); } catch {} }));
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, HOST, () => {
   console.log(`Claude Code Viewer em http://localhost:${PORT}`);
+  if (REMOTE) {
+    const ips = Object.values(os.networkInterfaces()).flat().filter((n) => n && n.family === 'IPv4' && !n.internal).map((n) => n.address);
+    console.log(`\nMODO REMOTO ligado (escutando em ${HOST}). Acesse de outro computador com o link:`);
+    for (const ip of ips.length ? ips : ['<ip-deste-computador>']) console.log(`  http://${ip}:${PORT}/?token=${TOKEN}`);
+    console.log('Esse token dá controle total dos seus terminais: não compartilhe. Prefira Tailscale ou túnel SSH (o HTTP puro da rede local não é criptografado).\n');
+  }
   restoreSessions();
   pollExternal();
 });
